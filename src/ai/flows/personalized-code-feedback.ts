@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview Provides personalized AI feedback on user-submitted code for coding exercises.
@@ -67,7 +68,14 @@ export type PersonalizedCodeFeedbackOutput = z.infer<
 export async function personalizedCodeFeedback(
   input: PersonalizedCodeFeedbackInput
 ): Promise<PersonalizedCodeFeedbackOutput> {
-  return personalizedCodeFeedbackFlow(input);
+  try {
+    const result = await personalizedCodeFeedbackFlow(input);
+    if (!result) throw new Error("AI returned empty result");
+    return result;
+  } catch (error) {
+    console.error("AI Flow Error:", error);
+    throw error;
+  }
 }
 
 const personalizedCodeFeedbackPrompt = ai.definePrompt({

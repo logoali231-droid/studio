@@ -1,15 +1,20 @@
 
 "use client";
 
-import { useState, use } from "react";
+import { useState, use, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Send, Play, Lightbulb, CheckCircle2, AlertCircle } from "lucide-react";
+import { ChevronLeft, Send, Play, Lightbulb, CheckCircle2, AlertCircle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { personalizedCodeFeedback, type PersonalizedCodeFeedbackOutput } from "@/ai/flows/personalized-code-feedback";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
+import { COURSES } from "@/app/lib/courses-data";
+import { useAuth, useFirestore, useUser } from "@/firebase";
+import { initiateAnonymousSignIn } from "@/firebase/non-blocking-login";
+import { doc, collection, serverTimestamp } from "firebase/firestore";
+import { addDocumentNonBlocking, setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
 interface ExercisePageProps {
   params: Promise<{ id: string }>;
@@ -19,20 +24,35 @@ export default function ExercisePage({ params }: ExercisePageProps) {
   const { id } = use(params);
   const router = useRouter();
   const { toast } = useToast();
+  const auth = useAuth();
+  const db = useFirestore();
+  const { user } = useUser();
+
   const [code, setCode] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<PersonalizedCodeFeedbackOutput | null>(null);
 
-  const exercises: Record<string, any> = {
-    "functions": {
-      title: "Function Basics",
-      description: "Create a function named `greet` that takes a `name` parameter and returns 'Hello, [name]!'.",
-      language: "JavaScript",
-      starterCode: "function greet(name) {\n  // Your code here\n}"
+  // Auto-login on mount
+  useEffect(() => {
+    if (!user && auth) {
+      initiateAnonymousSignIn(auth);
     }
+  }, [user, auth]);
+
+  // Find current exercise in global data
+  const currentExercise = COURSES.flatMap(c => c.skills).find(s => s.id === id) || {
+    id: "unknown",
+    title: "Unknown Challenge",
+    description: "Challenge details not found.",
+    language: "Code",
+    starterCode: "// Start coding here..."
   };
 
-  const currentExercise = exercises[id] || exercises["functions"];
+  useEffect(() => {
+    if (currentExercise) {
+      setCode(currentExercise.starterCode);
+    }
+  }, [id]);
 
   const handleSubmit = async () => {
     if (!code.trim()) {
@@ -49,12 +69,44 @@ export default function ExercisePage({ params }: ExercisePageProps) {
         exerciseDescription: currentExercise.description,
         language: currentExercise.language
       });
+      
       setFeedback(result);
-      if (result.isCorrect) {
-        toast({ title: "Great job! Challenge complete." });
+
+      if (user && db) {
+        // Record Attempt
+        const attemptRef = collection(db, "users", user.uid, "exerciseAttempts");
+        addDocumentNonBlocking(attemptRef, {
+          userId: user.uid,
+          exerciseId: currentExercise.id,
+          attemptNumber: 1, // Simplified for MVP
+          submittedCode: code,
+          isCorrect: result.isCorrect,
+          feedbackSummary: result.feedbackSummary,
+          submittedAt: serverTimestamp(),
+        });
+
+        // Update Progress
+        if (result.isCorrect) {
+          const progressId = `${user.uid}_${currentExercise.id}`;
+          const progressRef = doc(db, "users", user.uid, "lessonProgress", progressId);
+          setDocumentNonBlocking(progressRef, {
+            id: progressId,
+            userId: user.uid,
+            lessonId: currentExercise.id,
+            status: "Completed",
+            completedAt: serverTimestamp(),
+            isMastered: true
+          }, { merge: true });
+
+          toast({ title: "Great job! Challenge complete." });
+        }
+      }
+
+      if (!result.isCorrect) {
+        toast({ title: "Keep trying! Check the feedback.", variant: "default" });
       }
     } catch (error) {
-      toast({ title: "Failed to get feedback.", variant: "destructive" });
+      toast({ title: "AI processing timed out. Try submitting again!", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -69,10 +121,10 @@ export default function ExercisePage({ params }: ExercisePageProps) {
         </Button>
         <div className="flex-1">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Progress</span>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Level 4</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Mission Progress</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Skill: {currentExercise.title}</span>
           </div>
-          <Progress value={60} className="h-1.5" />
+          <Progress value={feedback?.isCorrect ? 100 : 40} className="h-1.5 transition-all" />
         </div>
       </header>
 
@@ -175,6 +227,7 @@ export default function ExercisePage({ params }: ExercisePageProps) {
         <Button 
           variant="secondary" 
           className="flex-1 gap-2 font-bold uppercase text-xs tracking-widest"
+          onClick={() => toast({ title: "Focus on the objective description above!" })}
         >
           <Lightbulb className="w-4 h-4 text-accent" />
           Get Hint
@@ -200,5 +253,3 @@ export default function ExercisePage({ params }: ExercisePageProps) {
     </div>
   );
 }
-
-import { Zap } from "lucide-react";
