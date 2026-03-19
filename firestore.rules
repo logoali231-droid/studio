@@ -5,157 +5,179 @@ service cloud.firestore {
     /**
      * CODE ASCENT SECURITY RULES
      *
-     * PHILOSOPHY:
-     * This ruleset implements a strict Authorization Independence model. Public educational 
-     * content is globally readable by authenticated users, while private user progress and 
-     * AI-driven profiles are strictly confined to the individual owner. 
+     * Core Philosophy: This ruleset enforces a strict user-ownership model for all personal progress
+     * and activity data, while providing authenticated read access to global educational content.
      *
-     * DATA STRUCTURE:
-     * 1. Global Content: /learningPaths/... (Hierarchical: Path > Module > Lesson)
-     * 2. User Data: /users/{userId}/... (Siloed: Profiles, Progress, and Mastery)
+     * Data Structure: 
+     * - User-specific data (Profiles, AI Challenges, Progress, Attempts) is nested under /users/{userId}.
+     * - Educational content (Courses, Modules, Exercises, Skills) is top-level and globally readable.
+     * - Administrative access is controlled via a dedicated /roles_admin collection.
      *
-     * KEY SECURITY DECISIONS:
-     * - Public Read/Private Write: Learning content (Paths, Modules, Lessons) is readable 
-     *   by all signed-in users but protected from modification by anyone except system admins.
-     * - Ownership-Based Access: All data under /users/{userId} requires the requester's 
-     *   UID to match the {userId} path parameter.
-     * - Relational Integrity: Documents created within user-specific paths must contain a 
-     *   'userId' field that matches the path, and this field is immutable after creation.
-     * - Prototyping Flexibility: Schema validation is ignored for general fields to allow 
-     *   rapid iteration on lesson content and AI feedback structures.
+     * Key Security Decisions:
+     * - Structural Segregation: Private user data is strictly separated from public educational content.
+     * - Ownership via Path: Authorization for user data is derived directly from the document path, 
+     *   ensuring performant list operations and eliminating costly get() lookups.
+     * - Admin Elevation: Global content (Courses, Skills) can only be modified by users whose 
+     *   UID exists in the /roles_admin collection.
+     *
+     * Denormalization for Authorization:
+     * - User-owned documents contain a 'userId' field that is validated against the document path
+     *   on creation and remains immutable on update to ensure relational integrity.
      */
 
-    // --- GLOBAL HELPER FUNCTIONS ---
+    // --- Helper Functions ---
 
-    /** @description Checks if the requester is authenticated. */
+    /** Checks if the request is from a signed-in user. */
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /** @description Checks if the requester's UID matches the provided userId. */
+    /** Checks if the authenticated user's UID matches the provided userId. */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    /** @description Checks if the document exists and the requester is the owner. */
+    /** Combines ownership check with verification that the document exists for updates/deletes. */
     function isExistingOwner(userId) {
-      return resource != null && isOwner(userId);
+      return isOwner(userId) && resource != null;
     }
 
-    /** @description Checks if the 'userId' field in the document matches the path parameter and is immutable. */
-    function isUserIdConsistent(userId) {
-      return request.resource.data.userId == userId && (resource == null || request.resource.data.userId == resource.data.userId);
+    /** Checks if the authenticated user has administrative privileges. */
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
 
-    // --- LEARNING CONTENT RULES ---
+    // --- Collection Rules ---
 
     /**
-     * @description Rules for the top-level LearningPath collection.
-     * @path /learningPaths/{learningPathId}
-     * @allow (get) Signed-in user fetching course details.
-     * @deny (create) Non-admin users attempting to create a course.
-     * @principle Public Read with Restricted System Writes.
+     * @description Rules for the User profile. Users can manage their own profile.
+     * @path /users/{userId}
+     * @allow (create) request.auth.uid == 'user_123' && request.resource.data.id == 'user_123'
+     * @deny (update) request.resource.data.id != resource.data.id
+     * @principle Restricts access to a user's own data tree and enforces ID consistency.
      */
-    match /learningPaths/{learningPathId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if false; // TODO: Implement Admin-role check (e.g., get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin')
-      
+    match /users/{userId} {
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId);
+
       /**
-       * @description Rules for Modules within a LearningPath.
-       * @path /learningPaths/{learningPathId}/modules/{moduleId}
-       * @allow (list) User browsing the modules of a specific course.
-       * @deny (update) User trying to change the order of modules.
-       * @principle Hierarchical access control for course content.
+       * @description Personalized AI Challenges generated for a specific user.
+       * @path /users/{userId}/aiChallenges/{aiChallengeId}
+       * @allow (get) request.auth.uid == userId
+       * @deny (create) request.resource.data.userId != userId
+       * @principle Path-based ownership for private personalized content.
+       */
+      match /aiChallenges/{aiChallengeId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.userId == userId;
+        allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isExistingOwner(userId);
+      }
+
+      /**
+       * @description User-specific dynamic learning paths.
+       * @path /users/{userId}/learningPaths/{learningPathId}
+       * @allow (list) request.auth.uid == userId
+       * @deny (delete) request.auth.uid != userId
+       * @principle Ensures users can only manage their own sequences.
+       */
+      match /learningPaths/{learningPathId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId);
+        allow update: if isExistingOwner(userId);
+        allow delete: if isExistingOwner(userId);
+      }
+
+      /**
+       * @description Tracks mastery level for a specific skill per user.
+       * @path /users/{userId}/skillProgress/{skillId}
+       * @allow (update) isOwner(userId) && request.resource.data.userId == resource.data.userId
+       * @deny (create) request.resource.data.userId != userId
+       * @principle Relational integrity: path userId must match document userId.
+       */
+      match /skillProgress/{skillId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.userId == userId;
+        allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isExistingOwner(userId);
+      }
+
+      /**
+       * @description Records of user attempts on exercises or challenges.
+       * @path /users/{userId}/exerciseAttempts/{attemptId}
+       * @allow (create) isOwner(userId) && request.resource.data.userId == userId
+       * @deny (get) request.auth.uid != userId
+       * @principle Owner-only access to historical performance data.
+       */
+      match /exerciseAttempts/{attemptId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.userId == userId;
+        allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isExistingOwner(userId);
+      }
+    }
+
+    /**
+     * @description Global educational courses. Public read, admin write.
+     * @path /courses/{courseId}
+     * @allow (get) isSignedIn()
+     * @deny (create) !isAdmin()
+     * @principle Authenticated public read with administrative control for content management.
+     */
+    match /courses/{courseId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+
+      /**
+       * @description Modules within a specific course.
+       * @path /courses/{courseId}/modules/{moduleId}
+       * @allow (list) isSignedIn()
+       * @deny (update) !isAdmin()
+       * @principle Content hierarchy follows top-level course permissions.
        */
       match /modules/{moduleId} {
         allow get, list: if isSignedIn();
-        allow create, update, delete: if false; // TODO: Admin write access only.
+        allow create, update, delete: if isAdmin();
 
         /**
-         * @description Rules for individual Lessons.
-         * @path /learningPaths/{learningPathId}/modules/{moduleId}/lessons/{lessonId}
-         * @allow (get) User accessing lesson content for a specific module.
-         * @deny (delete) Any standard user attempting to remove content.
-         * @principle Granular content access for authenticated users.
+         * @description Coding exercises within a module.
+         * @path /courses/{courseId}/modules/{moduleId}/exercises/{exerciseId}
+         * @allow (get) isSignedIn()
+         * @deny (delete) !isAdmin()
+         * @principle Deeply nested content inherits public read permissions.
          */
-        match /lessons/{lessonId} {
+        match /exercises/{exerciseId} {
           allow get, list: if isSignedIn();
-          allow create, update, delete: if false; // TODO: Admin write access only.
+          allow create, update, delete: if isAdmin();
         }
-      }
-
-      /**
-       * @description Rules for SkillTreeNodes within a path.
-       * @path /learningPaths/{learningPathId}/skillTreeNodes/{skillNodeId}
-       * @allow (list) User viewing the skill tree for a learning path.
-       * @deny (create) User trying to add new nodes to the tree.
-       * @principle Public skill tree visualization data.
-       */
-      match /skillTreeNodes/{skillNodeId} {
-        allow get, list: if isSignedIn();
-        allow create, update, delete: if false; // TODO: Admin write access only.
       }
     }
 
-    // --- USER DATA RULES ---
+    /**
+     * @description Global definitions of programming skills (The Skill Tree).
+     * @path /skills/{skillId}
+     * @allow (get) isSignedIn()
+     * @deny (update) !isAdmin()
+     * @principle Centralized skill definitions are globally readable but admin-managed.
+     */
+    match /skills/{skillId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
 
-    match /users/{userId} {
-      
-      /**
-       * @description UserLearningProfile containing AI insights and preferences.
-       * @path /users/{userId}/profile
-       * @allow (update) User updating their own learning preferences.
-       * @deny (get) User A trying to view User B's AI-generated strengths/weaknesses.
-       * @principle Strict ownership and path-to-field consistency.
-       */
-      match /profile {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && request.resource.data.userId == userId;
-        allow update: if isExistingOwner(userId) && isUserIdConsistent(userId);
-        allow delete: if isExistingOwner(userId);
-      }
-
-      /**
-       * @description Overall progress tracking for a specific LearningPath.
-       * @path /users/{userId}/learningPathProgress/{learningPathId}
-       * @allow (create) User starting a new learning path course.
-       * @deny (list) Unauthorized listing of progress for other users.
-       * @principle Enforces relational integrity between the user and their progress records.
-       */
-      match /learningPathProgress/{learningPathId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && request.resource.data.userId == userId;
-        allow update: if isExistingOwner(userId) && isUserIdConsistent(userId);
-        allow delete: if isExistingOwner(userId);
-      }
-
-      /**
-       * @description Granular progress tracking for individual Lessons.
-       * @path /users/{userId}/lessonProgress/{lessonId}
-       * @allow (update) User updating their score or completion status for a lesson.
-       * @deny (create) User trying to create progress for another user's ID.
-       * @principle Flattened structure for efficient user-scoped queries.
-       */
-      match /lessonProgress/{lessonId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && request.resource.data.userId == userId;
-        allow update: if isExistingOwner(userId) && isUserIdConsistent(userId);
-        allow delete: if isExistingOwner(userId);
-      }
-
-      /**
-       * @description Mastery tracking for specific SkillTreeNodes.
-       * @path /users/{userId}/skillMastery/{skillNodeId}
-       * @allow (get) User checking their own mastery level of a skill.
-       * @deny (update) Attempting to change the 'userId' associated with mastery.
-       * @principle Protects personalized mastery and achievement data.
-       */
-      match /skillMastery/{skillNodeId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && request.resource.data.userId == userId;
-        allow update: if isExistingOwner(userId) && isUserIdConsistent(userId);
-        allow delete: if isExistingOwner(userId);
-      }
+    /**
+     * @description Administrative role assignments.
+     * @path /roles_admin/{adminUid}
+     * @allow (get) isAdmin()
+     * @deny (write) true
+     * @principle System-level roles are read-only within rules to prevent self-elevation.
+     */
+    match /roles_admin/{adminUid} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create, update, delete: if false; 
     }
   }
 }
