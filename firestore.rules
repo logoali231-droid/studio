@@ -1,0 +1,161 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * CODE ASCENT SECURITY RULES
+     *
+     * PHILOSOPHY:
+     * This ruleset implements a strict Authorization Independence model. Public educational 
+     * content is globally readable by authenticated users, while private user progress and 
+     * AI-driven profiles are strictly confined to the individual owner. 
+     *
+     * DATA STRUCTURE:
+     * 1. Global Content: /learningPaths/... (Hierarchical: Path > Module > Lesson)
+     * 2. User Data: /users/{userId}/... (Siloed: Profiles, Progress, and Mastery)
+     *
+     * KEY SECURITY DECISIONS:
+     * - Public Read/Private Write: Learning content (Paths, Modules, Lessons) is readable 
+     *   by all signed-in users but protected from modification by anyone except system admins.
+     * - Ownership-Based Access: All data under /users/{userId} requires the requester's 
+     *   UID to match the {userId} path parameter.
+     * - Relational Integrity: Documents created within user-specific paths must contain a 
+     *   'userId' field that matches the path, and this field is immutable after creation.
+     * - Prototyping Flexibility: Schema validation is ignored for general fields to allow 
+     *   rapid iteration on lesson content and AI feedback structures.
+     */
+
+    // --- GLOBAL HELPER FUNCTIONS ---
+
+    /** @description Checks if the requester is authenticated. */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /** @description Checks if the requester's UID matches the provided userId. */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /** @description Checks if the document exists and the requester is the owner. */
+    function isExistingOwner(userId) {
+      return resource != null && isOwner(userId);
+    }
+
+    /** @description Checks if the 'userId' field in the document matches the path parameter and is immutable. */
+    function isUserIdConsistent(userId) {
+      return request.resource.data.userId == userId && (resource == null || request.resource.data.userId == resource.data.userId);
+    }
+
+    // --- LEARNING CONTENT RULES ---
+
+    /**
+     * @description Rules for the top-level LearningPath collection.
+     * @path /learningPaths/{learningPathId}
+     * @allow (get) Signed-in user fetching course details.
+     * @deny (create) Non-admin users attempting to create a course.
+     * @principle Public Read with Restricted System Writes.
+     */
+    match /learningPaths/{learningPathId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if false; // TODO: Implement Admin-role check (e.g., get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin')
+      
+      /**
+       * @description Rules for Modules within a LearningPath.
+       * @path /learningPaths/{learningPathId}/modules/{moduleId}
+       * @allow (list) User browsing the modules of a specific course.
+       * @deny (update) User trying to change the order of modules.
+       * @principle Hierarchical access control for course content.
+       */
+      match /modules/{moduleId} {
+        allow get, list: if isSignedIn();
+        allow create, update, delete: if false; // TODO: Admin write access only.
+
+        /**
+         * @description Rules for individual Lessons.
+         * @path /learningPaths/{learningPathId}/modules/{moduleId}/lessons/{lessonId}
+         * @allow (get) User accessing lesson content for a specific module.
+         * @deny (delete) Any standard user attempting to remove content.
+         * @principle Granular content access for authenticated users.
+         */
+        match /lessons/{lessonId} {
+          allow get, list: if isSignedIn();
+          allow create, update, delete: if false; // TODO: Admin write access only.
+        }
+      }
+
+      /**
+       * @description Rules for SkillTreeNodes within a path.
+       * @path /learningPaths/{learningPathId}/skillTreeNodes/{skillNodeId}
+       * @allow (list) User viewing the skill tree for a learning path.
+       * @deny (create) User trying to add new nodes to the tree.
+       * @principle Public skill tree visualization data.
+       */
+      match /skillTreeNodes/{skillNodeId} {
+        allow get, list: if isSignedIn();
+        allow create, update, delete: if false; // TODO: Admin write access only.
+      }
+    }
+
+    // --- USER DATA RULES ---
+
+    match /users/{userId} {
+      
+      /**
+       * @description UserLearningProfile containing AI insights and preferences.
+       * @path /users/{userId}/profile
+       * @allow (update) User updating their own learning preferences.
+       * @deny (get) User A trying to view User B's AI-generated strengths/weaknesses.
+       * @principle Strict ownership and path-to-field consistency.
+       */
+      match /profile {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.userId == userId;
+        allow update: if isExistingOwner(userId) && isUserIdConsistent(userId);
+        allow delete: if isExistingOwner(userId);
+      }
+
+      /**
+       * @description Overall progress tracking for a specific LearningPath.
+       * @path /users/{userId}/learningPathProgress/{learningPathId}
+       * @allow (create) User starting a new learning path course.
+       * @deny (list) Unauthorized listing of progress for other users.
+       * @principle Enforces relational integrity between the user and their progress records.
+       */
+      match /learningPathProgress/{learningPathId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.userId == userId;
+        allow update: if isExistingOwner(userId) && isUserIdConsistent(userId);
+        allow delete: if isExistingOwner(userId);
+      }
+
+      /**
+       * @description Granular progress tracking for individual Lessons.
+       * @path /users/{userId}/lessonProgress/{lessonId}
+       * @allow (update) User updating their score or completion status for a lesson.
+       * @deny (create) User trying to create progress for another user's ID.
+       * @principle Flattened structure for efficient user-scoped queries.
+       */
+      match /lessonProgress/{lessonId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.userId == userId;
+        allow update: if isExistingOwner(userId) && isUserIdConsistent(userId);
+        allow delete: if isExistingOwner(userId);
+      }
+
+      /**
+       * @description Mastery tracking for specific SkillTreeNodes.
+       * @path /users/{userId}/skillMastery/{skillNodeId}
+       * @allow (get) User checking their own mastery level of a skill.
+       * @deny (update) Attempting to change the 'userId' associated with mastery.
+       * @principle Protects personalized mastery and achievement data.
+       */
+      match /skillMastery/{skillNodeId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.userId == userId;
+        allow update: if isExistingOwner(userId) && isUserIdConsistent(userId);
+        allow delete: if isExistingOwner(userId);
+      }
+    }
+  }
+}

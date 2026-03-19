@@ -1,0 +1,541 @@
+{
+  "entities": {
+    "LearningPath": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "LearningPath",
+      "type": "object",
+      "description": "Represents a high-level programming course or learning track within Code Ascent, similar to a Duolingo language course, covering broad topics like 'Web Development' or 'Python Programming'.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the LearningPath entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The human-readable name of the learning path (e.g., 'Python Programming Fundamentals', 'Web Development Basics')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of what the learning path covers, its objectives, and target audience."
+        },
+        "iconUrl": {
+          "type": "string",
+          "description": "URL to an image or icon representing the learning path in the UI.",
+          "format": "uri"
+        },
+        "difficultyLevel": {
+          "type": "string",
+          "description": "The overall difficulty level of the learning path (e.g., 'Beginner', 'Intermediate', 'Advanced', 'Expert')."
+        },
+        "tags": {
+          "type": "array",
+          "description": "An array of categorization tags for the learning path (e.g., 'Python', 'Backend', 'Frontend', 'Security').",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "difficultyLevel"
+      ]
+    },
+    "Module": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Module",
+      "type": "object",
+      "description": "A cohesive, ordered unit of learning content within a LearningPath, typically focusing on a specific topic or skill area, and comprising multiple Lessons.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Module entity."
+        },
+        "learningPathId": {
+          "type": "string",
+          "description": "Reference to the LearningPath this module belongs to. (Relationship: LearningPath 1:N Module)"
+        },
+        "name": {
+          "type": "string",
+          "description": "The title of the module (e.g., 'Python Basics: Variables and Data Types')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A summary of the specific topics and learning outcomes covered within this module."
+        },
+        "order": {
+          "type": "number",
+          "description": "The sequential order of the module within its parent learning path, determining its position in the learning progression."
+        }
+      },
+      "required": [
+        "id",
+        "learningPathId",
+        "name",
+        "description",
+        "order"
+      ]
+    },
+    "Lesson": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Lesson",
+      "type": "object",
+      "description": "An individual educational step within a Module, which can be an explanation, an interactive coding exercise, a quiz, or other content types.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Lesson entity."
+        },
+        "moduleId": {
+          "type": "string",
+          "description": "Reference to the Module this lesson belongs to. (Relationship: Module 1:N Lesson)"
+        },
+        "name": {
+          "type": "string",
+          "description": "The title of the lesson (e.g., 'Declaring String Variables', 'Introduction to Loops')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description outlining the main objective or content of the lesson."
+        },
+        "contentType": {
+          "type": "string",
+          "description": "The type of content presented in this lesson (e.g., 'TextExplanation', 'CodingExercise', 'Quiz', 'VideoLink')."
+        },
+        "contentRef": {
+          "type": "string",
+          "description": "A reference or identifier pointing to the actual lesson content (e.g., a file path for markdown, a key for a content management system, or a JSON string for simple exercises)."
+        },
+        "order": {
+          "type": "number",
+          "description": "The sequential order of the lesson within its parent module."
+        }
+      },
+      "required": [
+        "id",
+        "moduleId",
+        "name",
+        "description",
+        "contentType",
+        "contentRef",
+        "order"
+      ]
+    },
+    "SkillTreeNode": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "SkillTreeNode",
+      "type": "object",
+      "description": "Represents a distinct programming skill or concept that can be mastered by a user, forming a node in the visual skill tree for progress tracking.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the SkillTreeNode entity."
+        },
+        "learningPathId": {
+          "type": "string",
+          "description": "Reference to the LearningPath this skill node is associated with. (Relationship: LearningPath 1:N SkillTreeNode)"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the skill (e.g., 'Basic Python Syntax', 'Object-Oriented Principles', 'API Design')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed explanation of what mastering this specific skill entails and its relevance."
+        },
+        "prerequisiteSkillNodeIds": {
+          "type": "array",
+          "description": "An array of SkillTreeNode IDs that represent prerequisite skills required to unlock or effectively learn this skill. (Relationship: SkillTreeNode N:N SkillTreeNode)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "xpValue": {
+          "type": "number",
+          "description": "The amount of experience points awarded to the user upon demonstrating mastery of this skill."
+        },
+        "category": {
+          "type": "string",
+          "description": "A broader category that this skill belongs to (e.g., 'Fundamentals', 'Control Flow', 'Data Structures', 'Web Frameworks')."
+        }
+      },
+      "required": [
+        "id",
+        "learningPathId",
+        "name",
+        "description",
+        "xpValue",
+        "category"
+      ]
+    },
+    "UserLearningProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserLearningProfile",
+      "type": "object",
+      "description": "Stores personalized data, preferences, and AI-driven insights about a user's learning habits, strengths, and weaknesses for adaptive learning.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the UserLearningProfile entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The unique identifier of the user from the external authentication system. (Relationship: User 1:1 UserLearningProfile)"
+        },
+        "strengths": {
+          "type": "array",
+          "description": "An array of topics or skills where the user has demonstrated high proficiency or understanding, identified by AI analysis.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "weaknesses": {
+          "type": "array",
+          "description": "An array of topics or skills where the user has demonstrated difficulty or requires more practice, identified by AI analysis.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "preferredLearningStyles": {
+          "type": "array",
+          "description": "An array of the user's preferred learning methodologies (e.g., 'Visual', 'Interactive', 'Text-based', 'Problem-Solving').",
+          "items": {
+            "type": "string"
+          }
+        },
+        "aiAdaptivePreferences": {
+          "type": "string",
+          "description": "A stringified JSON object storing user-specific preferences or AI configuration settings that influence dynamic learning path adaptation (e.g., desired pace, challenge tolerance, preferred feedback style)."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "strengths",
+        "weaknesses"
+      ]
+    },
+    "UserLessonProgress": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserLessonProgress",
+      "type": "object",
+      "description": "Tracks a specific user's progress, performance, and interaction history for an individual Lesson.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the UserLessonProgress entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The unique identifier of the user from the external authentication system. (Relationship: User 1:N UserLessonProgress)"
+        },
+        "lessonId": {
+          "type": "string",
+          "description": "Reference to the Lesson this progress record is for. (Relationship: Lesson 1:N UserLessonProgress)"
+        },
+        "status": {
+          "type": "string",
+          "description": "The current completion status of the lesson for the user (e.g., 'NotStarted', 'InProgress', 'Completed', 'Skipped')."
+        },
+        "score": {
+          "type": "number",
+          "description": "The score achieved on the lesson's exercise or quiz, typically ranging from 0 to 100."
+        },
+        "attempts": {
+          "type": "number",
+          "description": "The total number of attempts the user made to complete the lesson or its interactive components."
+        },
+        "lastAttemptDate": {
+          "type": "string",
+          "description": "The timestamp of the user's most recent interaction or attempt with this lesson.",
+          "format": "date-time"
+        },
+        "completedDate": {
+          "type": "string",
+          "description": "The timestamp when the user officially completed this lesson.",
+          "format": "date-time"
+        },
+        "codeHistoryRef": {
+          "type": "string",
+          "description": "A reference (e.g., file path, database ID) to the user's submitted code snippets for coding exercises within this lesson."
+        },
+        "aiFeedbackHistoryRef": {
+          "type": "string",
+          "description": "A reference (e.g., file path, database ID) to the history of AI-generated feedback provided for the user's submissions in this lesson."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "lessonId",
+        "status"
+      ]
+    },
+    "UserSkillMastery": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserSkillMastery",
+      "type": "object",
+      "description": "Records a specific user's current mastery level and related progress for an individual SkillTreeNode.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the UserSkillMastery entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The unique identifier of the user from the external authentication system. (Relationship: User 1:N UserSkillMastery)"
+        },
+        "skillNodeId": {
+          "type": "string",
+          "description": "Reference to the SkillTreeNode this mastery record is associated with. (Relationship: SkillTreeNode 1:N UserSkillMastery)"
+        },
+        "learningPathId": {
+          "type": "string",
+          "description": "Reference to the LearningPath the skill node belongs to, for contextual filtering. (Relationship: LearningPath 1:N UserSkillMastery)"
+        },
+        "masteryLevel": {
+          "type": "number",
+          "description": "A numerical value representing the user's current mastery level for the skill (e.g., 0-100, where 100 indicates full mastery)."
+        },
+        "achievedDate": {
+          "type": "string",
+          "description": "The timestamp when the user reached the current mastery level or completed this skill.",
+          "format": "date-time"
+        },
+        "lastReviewedDate": {
+          "type": "string",
+          "description": "The timestamp of the last time the user actively reviewed or practiced content related to this skill.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "skillNodeId",
+        "learningPathId",
+        "masteryLevel"
+      ]
+    },
+    "UserLearningPathProgress": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserLearningPathProgress",
+      "type": "object",
+      "description": "Tracks a specific user's overall progress, current position, and milestones within an entire LearningPath.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the UserLearningPathProgress entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The unique identifier of the user from the external authentication system. (Relationship: User 1:N UserLearningPathProgress)"
+        },
+        "learningPathId": {
+          "type": "string",
+          "description": "Reference to the LearningPath this progress record is for. (Relationship: LearningPath 1:N UserLearningPathProgress)"
+        },
+        "status": {
+          "type": "string",
+          "description": "The overall status of the user's engagement with this learning path (e.g., 'NotStarted', 'InProgress', 'Completed', 'Paused')."
+        },
+        "currentModuleId": {
+          "type": "string",
+          "description": "Reference to the Module the user is currently focused on within this learning path. (Relationship: Module 1:N UserLearningPathProgress)"
+        },
+        "currentLessonId": {
+          "type": "string",
+          "description": "Reference to the Lesson the user is currently working on within their current module in this path. (Relationship: Lesson 1:N UserLearningPathProgress)"
+        },
+        "progressPercentage": {
+          "type": "number",
+          "description": "The calculated overall completion percentage of the learning path for the user (0-100)."
+        },
+        "startDate": {
+          "type": "string",
+          "description": "The timestamp when the user first started this learning path.",
+          "format": "date-time"
+        },
+        "completionDate": {
+          "type": "string",
+          "description": "The timestamp when the user officially completed this entire learning path.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "learningPathId",
+        "status",
+        "startDate"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/learningPaths/{learningPathId}",
+        "definition": {
+          "entityName": "LearningPath",
+          "schema": {
+            "$ref": "#/backend/entities/LearningPath"
+          },
+          "description": "Publicly accessible information about a high-level programming course or learning track. All authenticated users can read this content. Admins have write access.",
+          "params": [
+            {
+              "name": "learningPathId",
+              "description": "The unique identifier of the learning path."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/learningPaths/{learningPathId}/modules/{moduleId}",
+        "definition": {
+          "entityName": "Module",
+          "schema": {
+            "$ref": "#/backend/entities/Module"
+          },
+          "description": "Contains modules for a specific learning path. Accessible by all authenticated users. Includes denormalized 'learningPathId' for direct access context. Admins have write access.",
+          "params": [
+            {
+              "name": "learningPathId",
+              "description": "The unique identifier of the parent learning path."
+            },
+            {
+              "name": "moduleId",
+              "description": "The unique identifier of the module."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/learningPaths/{learningPathId}/modules/{moduleId}/lessons/{lessonId}",
+        "definition": {
+          "entityName": "Lesson",
+          "schema": {
+            "$ref": "#/backend/entities/Lesson"
+          },
+          "description": "Contains individual lessons for a specific module within a learning path. Accessible by all authenticated users. Includes denormalized 'moduleId' (and implicitly 'learningPathId') for direct access context. Admins have write access.",
+          "params": [
+            {
+              "name": "learningPathId",
+              "description": "The unique identifier of the parent learning path."
+            },
+            {
+              "name": "moduleId",
+              "description": "The unique identifier of the parent module."
+            },
+            {
+              "name": "lessonId",
+              "description": "The unique identifier of the lesson."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/learningPaths/{learningPathId}/skillTreeNodes/{skillNodeId}",
+        "definition": {
+          "entityName": "SkillTreeNode",
+          "schema": {
+            "$ref": "#/backend/entities/SkillTreeNode"
+          },
+          "description": "Defines individual skill nodes within a learning path's visual skill tree. Accessible by all authenticated users. Includes denormalized 'learningPathId' for direct access context. Admins have write access.",
+          "params": [
+            {
+              "name": "learningPathId",
+              "description": "The unique identifier of the parent learning path."
+            },
+            {
+              "name": "skillNodeId",
+              "description": "The unique identifier of the skill tree node."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/profile",
+        "definition": {
+          "entityName": "UserLearningProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserLearningProfile"
+          },
+          "description": "Stores personalized data and AI-driven insights for a specific user. Access is restricted to the owner (`request.auth.uid == userId`). Includes denormalized 'userId' for authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user (from `request.auth.uid`)."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/learningPathProgress/{learningPathId}",
+        "definition": {
+          "entityName": "UserLearningPathProgress",
+          "schema": {
+            "$ref": "#/backend/entities/UserLearningPathProgress"
+          },
+          "description": "Tracks a user's overall progress within a specific learning path. Access is restricted to the owner (`request.auth.uid == userId`). Includes denormalized 'userId' and 'learningPathId' for authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user (from `request.auth.uid`)."
+            },
+            {
+              "name": "learningPathId",
+              "description": "The unique identifier of the learning path this progress record is for."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/lessonProgress/{lessonId}",
+        "definition": {
+          "entityName": "UserLessonProgress",
+          "schema": {
+            "$ref": "#/backend/entities/UserLessonProgress"
+          },
+          "description": "Tracks a user's progress and performance on individual lessons. Access is restricted to the owner (`request.auth.uid == userId`). Includes denormalized 'userId' and 'lessonId' for authorization independence. This flatter structure simplifies querying all user lesson progress regardless of learning path/module.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user (from `request.auth.uid`)."
+            },
+            {
+              "name": "lessonId",
+              "description": "The unique identifier of the lesson this progress record is for."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/skillMastery/{skillNodeId}",
+        "definition": {
+          "entityName": "UserSkillMastery",
+          "schema": {
+            "$ref": "#/backend/entities/UserSkillMastery"
+          },
+          "description": "Records a user's mastery level for individual skill nodes. Access is restricted to the owner (`request.auth.uid == userId`). Includes denormalized 'userId', 'skillNodeId', and 'learningPathId' for authorization independence. This flatter structure simplifies querying all user skill mastery records.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user (from `request.auth.uid`)."
+            },
+            {
+              "name": "skillNodeId",
+              "description": "The unique identifier of the skill tree node this mastery record is for."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The proposed Firestore structure prioritizes secure, scalable, and debuggable access to learning content and user progress data. It achieves **Authorization Independence** by segregating global, publicly accessible learning content from private, user-specific progress data. For all user-specific data (UserLearningProfile, UserLearningPathProgress, UserLessonProgress, UserSkillMastery), the `userId` is explicitly embedded in the document's path (e.g., `/users/{userId}/profile`) and also denormalized within the document itself (e.g., `UserLearningProfile.userId`). This design allows Firestore security rules to directly compare `request.auth.uid` with the `{userId}` wildcard in the path, and optionally cross-reference the `userId` field within the document, without requiring costly and complex `get()` operations. This ensures atomic operations for creating user-related documents and simplifies rule writing significantly.\n\n**QAPs (Queries are not Filters)** are inherently supported through this structural segregation. For global learning content (LearningPath, Module, Lesson, SkillTreeNode), all authenticated users have read access. Since these collections contain only public content, `list` operations on these paths will securely return all relevant documents without requiring additional filtering logic in rules. For user-specific data, `list` operations are implicitly secure because they are always scoped under `/users/{userId}/...`. A query to `/users/{uid}/lessonProgress` for example, will only ever return lessons owned by the `uid` making the request, fulfilling the QAP requirement. Denormalized fields like `learningPathId` within user progress documents facilitate efficient querying of a user's progress within a specific learning path without needing to traverse multiple parent documents. The `UserLearningProfile` entity directly addresses the 'AI for each user' requirement by providing a dedicated place to store AI-driven insights, strengths, weaknesses, and adaptive learning preferences, ensuring personalization is a core part of the user experience."
+  }
+}
