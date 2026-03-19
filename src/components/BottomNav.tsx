@@ -3,14 +3,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutTree, BrainCircuit, Target, User } from "lucide-react";
+import { Network, BrainCircuit, Target, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function BottomNav() {
   const pathname = usePathname();
 
   const navItems = [
-    { icon: LayoutTree, label: "Learn", href: "/" },
+    { icon: Network, label: "Learn", href: "/" },
     { icon: Target, label: "Practice", href: "/practice" },
     { icon: BrainCircuit, label: "Quests", href: "/quests" },
     { icon: User, label: "Profile", href: "/profile" },
