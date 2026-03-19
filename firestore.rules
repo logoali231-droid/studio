@@ -3,84 +3,66 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * CODE ASCENT SECURITY RULES
-     * 
-     * Core Philosophy:
-     * This ruleset implements a strict user-ownership model for personal data and 
-     * a public-read model for educational content. The system distinguishes between 
-     * global curriculum (Courses, Lessons, Skills) and user-specific interactions 
-     * (Attempts, Progress, AI-generated content).
-     * 
-     * Data Structure:
-     * 1. Public Curriculum: Root-level /courses and /skills collections.
-     * 2. User Sandbox: All private data is nested under /userProfiles/{userId}.
-     * 
-     * Key Security Decisions:
-     * - User Listing: Prevented at the root /userProfiles level to stop user discovery.
-     * - Authorization Independence: User IDs are embedded in paths and documents to allow 
-     *   for fast, direct authorization without requiring costly get() lookups.
-     * - Structural Segregation: AI-generated exercises are stored in user-specific 
-     *   subcollections, while static lesson exercises live within the course hierarchy.
-     * 
-     * Prototyping Mode:
-     * Rules prioritize strict authorization (WHO can access) over strict schema 
-     * validation (WHAT the data looks like). Relational integrity is enforced 
-     * only for core linking fields like creatorId or userId.
+     * CORE PHILOSOPHY
+     * This ruleset implements a strict "Path-Based Ownership" model for user data and a "Public Read-Only" 
+     * model for educational content. Security is enforced by verifying the user's identity via Firebase 
+     * Auth and ensuring they only access data within their designated path (/users/{userId}/...).
+     *
+     * DATA STRUCTURE
+     * 1. Static Content: Languages, Topics, Skills, Lessons, and Exercises are organized in a 
+     *    deeply nested hierarchy. These are publicly readable to facilitate learning.
+     * 2. User Data: All progress, attempts, mastery, and challenges are stored as subcollections 
+     *    directly under the specific user's profile document.
+     *
+     * KEY SECURITY DECISIONS
+     * - Authorization Independence: By nesting user data under /users/{userId}, we avoid expensive 
+     *   cross-document lookups (get() calls) and ensure that rules remain performant.
+     * - Relational Integrity: On creation of user-specific data, we enforce that internal 'userId' 
+     *   fields match the URL path parameters.
+     * - Prototyping Flexibility: Data types and non-relational fields are not validated to allow 
+     *   rapid frontend iteration, but access control is strictly enforced.
      */
 
-    // --- HELPER FUNCTIONS ---
+    // --- Helper Functions ---
 
-    /** @description Checks if the request is from a signed-in user. */
+    /** @description Checks if the user is authenticated with Firebase Auth. */
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /** @description Checks if the authenticated user matches the provided userId. */
+    /** @description Checks if the authenticated user's UID matches the provided userId. */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    /** @description Ensures the document exists and the user is the owner. */
+    /** @description Checks ownership and ensures the document exists for state-changing operations. */
     function isExistingOwner(userId) {
       return resource != null && isOwner(userId);
     }
 
-    // --- COLLECTION RULES ---
+    // --- Rules ---
 
     /**
-     * @description Rules for user profile data. Allows users to manage their own profile.
-     * @path /userProfiles/{userId}
-     * @allow (create) if auth.uid == userId
-     * @deny (list) to prevent user discovery.
-     * @principle Ownership (Self-Creation).
+     * @description Rules for user profile documents.
+     * @path /users/{userId}
+     * @allow (get) Any user to view a profile. (create/update) The owner to manage their own profile.
+     * @deny (write) Any user trying to modify someone else's profile.
+     * @principle Ownership and Self-Creation.
      */
-    match /userProfiles/{userId} {
-      allow get: if isOwner(userId);
-      allow list: if false; 
+    match /users/{userId} {
+      allow get, list: if true;
       allow create: if isOwner(userId) && request.resource.data.id == userId;
       allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
       allow delete: if isExistingOwner(userId);
 
       /**
-       * @description AI-generated coding exercises unique to a user.
-       * @path /userProfiles/{userId}/generatedExercises/{exerciseId}
-       * @allow (create) if user is path owner.
-       * @principle Structural Segregation (Private vs Public Exercises).
+       * @description Tracks lesson completion status for a specific user.
+       * @path /users/{userId}/lessonProgress/{id}
+       * @allow (all) The owner of the parent user profile.
+       * @deny (all) Any user who is not the owner identified in the path.
+       * @principle Path-based ownership for private user data.
        */
-      match /generatedExercises/{exerciseId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId);
-        allow update: if isExistingOwner(userId);
-        allow delete: if isExistingOwner(userId);
-      }
-
-      /**
-       * @description Records of user exercise attempts.
-       * @path /userProfiles/{userId}/exerciseAttempts/{attemptId}
-       * @allow (list) only for the owner's own attempts.
-       * @principle Relational Integrity (userId must match path).
-       */
-      match /exerciseAttempts/{attemptId} {
+      match /lessonProgress/{id} {
         allow get, list: if isOwner(userId);
         allow create: if isOwner(userId) && request.resource.data.userId == userId;
         allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
@@ -88,11 +70,13 @@ service cloud.firestore {
       }
 
       /**
-       * @description Tracks mastery levels for skills.
-       * @path /userProfiles/{userId}/skillProgress/{skillProgressId}
-       * @principle Path-based Ownership.
+       * @description Records user exercise submissions and AI feedback.
+       * @path /users/{userId}/exerciseAttempts/{id}
+       * @allow (all) The owner of the parent user profile.
+       * @deny (all) Any user who is not the owner identified in the path.
+       * @principle Path-based ownership for private user data.
        */
-      match /skillProgress/{skillProgressId} {
+      match /exerciseAttempts/{id} {
         allow get, list: if isOwner(userId);
         allow create: if isOwner(userId) && request.resource.data.userId == userId;
         allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
@@ -100,11 +84,27 @@ service cloud.firestore {
       }
 
       /**
-       * @description Metadata for AI-generated personalized challenges.
-       * @path /userProfiles/{userId}/generatedChallenges/{generatedChallengeId}
-       * @principle Authorization Independence.
+       * @description Stores the user's mastery level for specific skills.
+       * @path /users/{userId}/skillMastery/{id}
+       * @allow (all) The owner of the parent user profile.
+       * @deny (all) Any user who is not the owner identified in the path.
+       * @principle Path-based ownership for private user data.
        */
-      match /generatedChallenges/{generatedChallengeId} {
+      match /skillMastery/{id} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.userId == userId;
+        allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isExistingOwner(userId);
+      }
+
+      /**
+       * @description Personalized coding challenges generated for the user.
+       * @path /users/{userId}/aiChallenges/{id}
+       * @allow (all) The owner of the parent user profile.
+       * @deny (all) Any user who is not the owner identified in the path.
+       * @principle Path-based ownership for private user data.
+       */
+      match /aiChallenges/{id} {
         allow get, list: if isOwner(userId);
         allow create: if isOwner(userId) && request.resource.data.userId == userId;
         allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
@@ -113,44 +113,36 @@ service cloud.firestore {
     }
 
     /**
-     * @description Global course catalog. Readable by all students.
-     * @path /courses/{courseId}
-     * @allow (get, list) if signed in.
-     * @deny (write) users cannot modify course content.
-     * @principle Public Read with Owner-Only Writes (Admin implied).
+     * @description Global educational content hierarchy.
+     * @path /languages/{languageId} (and subcollections)
+     * @allow (read) Public access for all users to view content.
+     * @deny (write) All users; content is managed by administrators.
+     * @principle Public read with restricted writes for static content.
      */
-    match /courses/{courseId} {
-      allow get, list: if isSignedIn();
+    match /languages/{languageId} {
+      allow get, list: if true;
       allow create, update, delete: if false;
 
-      /**
-       * @description Lessons within a specific course.
-       * @path /courses/{courseId}/lessons/{lessonId}
-       */
-      match /lessons/{lessonId} {
-        allow get, list: if isSignedIn();
+      match /topics/{topicId} {
+        allow get, list: if true;
         allow create, update, delete: if false;
 
-        /**
-         * @description Static exercises belonging to a specific lesson.
-         * @path /courses/{courseId}/lessons/{lessonId}/exercises/{exerciseId}
-         */
-        match /exercises/{exerciseId} {
-          allow get, list: if isSignedIn();
+        match /skills/{skillId} {
+          allow get, list: if true;
           allow create, update, delete: if false;
+
+          match /lessons/{lessonId} {
+            allow get, list: if true;
+            allow create, update, delete: if false;
+
+            match /exercises/{exerciseId} {
+              allow get, list: if true;
+              allow create, update, delete: if false;
+            }
+          }
         }
       }
     }
 
-    /**
-     * @description Global skill tree definitions.
-     * @path /skills/{skillId}
-     * @allow (get, list) if signed in.
-     * @principle Public Read with Owner-Only Writes (Admin implied).
-     */
-    match /skills/{skillId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if false;
-    }
   }
 }
