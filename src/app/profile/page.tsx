@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 export default function ProfilePage() {
   const stats = [
@@ -32,9 +33,11 @@ export default function ProfilePage() {
           <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold">Pro Developer • Level 18</p>
         </div>
         <div className="flex gap-2 w-full mt-4">
-          <Button variant="secondary" className="flex-1 gap-2 font-bold uppercase text-[10px] tracking-widest">
-            <Settings className="w-3 h-3" /> Edit Profile
-          </Button>
+          <Link href="/settings" className="flex-1 w-full flex">
+            <Button variant="secondary" className="flex-1 gap-2 font-bold uppercase text-[10px] tracking-widest w-full">
+              <Settings className="w-3 h-3" /> Configure
+            </Button>
+          </Link>
           <Button variant="outline" className="flex-1 gap-2 font-bold uppercase text-[10px] tracking-widest">
             <Github className="w-3 h-3" /> Connect
           </Button>

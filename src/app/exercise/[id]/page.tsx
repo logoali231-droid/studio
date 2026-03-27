@@ -3,7 +3,7 @@
 
 import { useState, use, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Send, Play, Lightbulb, CheckCircle2, AlertCircle, Zap } from "lucide-react";
+import { ChevronLeft, Send, Play, Lightbulb, CheckCircle2, AlertCircle, Zap, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
@@ -12,9 +12,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { COURSES } from "@/app/lib/courses-data";
 import { useAuth, useFirestore, useUser } from "@/firebase";
-import { initiateAnonymousSignIn } from "@/firebase/non-blocking-login";
 import { doc, collection, serverTimestamp } from "firebase/firestore";
 import { addDocumentNonBlocking, setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { getPastUserErrorsSummary } from "@/lib/user-progress";
 
 interface ExercisePageProps {
   params: Promise<{ id: string }>;
@@ -26,18 +26,21 @@ export default function ExercisePage({ params }: ExercisePageProps) {
   const { toast } = useToast();
   const auth = useAuth();
   const db = useFirestore();
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
 
   const [code, setCode] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<PersonalizedCodeFeedbackOutput | null>(null);
 
-  // Auto-login on mount
   useEffect(() => {
-    if (!user && auth) {
-      initiateAnonymousSignIn(auth);
+    if (!isUserLoading && !user) {
+      router.replace("/login");
     }
-  }, [user, auth]);
+  }, [user, isUserLoading, router]);
+
+  if (isUserLoading || !user) {
+    return <div className="min-h-screen bg-background flex flex-col items-center justify-center glow-blue text-primary animate-pulse"><Rocket className="w-12 h-12" /></div>;
+  }
 
   // Find current exercise in global data
   const currentExercise = COURSES.flatMap(c => c.skills).find(s => s.id === id) || {
@@ -64,10 +67,19 @@ export default function ExercisePage({ params }: ExercisePageProps) {
     setFeedback(null);
 
     try {
+      let pastUserErrors = undefined;
+      if (user && db) {
+        const errorSummary = await getPastUserErrorsSummary(db, user.uid);
+        if (errorSummary) {
+          pastUserErrors = errorSummary;
+        }
+      }
+
       const result = await personalizedCodeFeedback({
         userCode: code,
         exerciseDescription: currentExercise.description,
-        language: currentExercise.language
+        language: currentExercise.language,
+        pastUserErrors: pastUserErrors
       });
       
       setFeedback(result);
@@ -223,7 +235,7 @@ export default function ExercisePage({ params }: ExercisePageProps) {
       </main>
 
       {/* Action Bar */}
-      <footer className="fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto p-4 bg-card border-t border-border flex gap-3">
+      <footer className="fixed bottom-0 left-0 right-0 p-4 bg-card border-t border-border flex gap-3">
         <Button 
           variant="secondary" 
           className="flex-1 gap-2 font-bold uppercase text-xs tracking-widest"

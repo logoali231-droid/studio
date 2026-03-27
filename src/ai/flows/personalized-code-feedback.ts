@@ -17,6 +17,8 @@ const PersonalizedCodeFeedbackInputSchema = z.object({
     z.string().describe('A description of the coding exercise or problem statement.'),
   language:
     z.string().describe('The programming language of the user code (e.g., "Python", "JavaScript", "Java").'),
+  pastUserErrors: 
+    z.string().optional().describe('A summary of past errors made by the user to personalize feedback.'),
 });
 export type PersonalizedCodeFeedbackInput = z.infer<
   typeof PersonalizedCodeFeedbackInputSchema
@@ -86,6 +88,12 @@ const personalizedCodeFeedbackPrompt = ai.definePrompt({
 Your goal is to help the user understand their mistakes, learn efficiently, and improve their coding skills.
 
 The user has submitted code for a coding exercise. Analyze their code for correctness, efficiency, readability, and adherence to best practices.
+
+{{#if pastUserErrors}}
+The user has previously struggled with these areas or made these errors:
+{{{pastUserErrors}}}
+Tailor your feedback specifically to help them overcome these specific weaknesses if they appear again, keeping this history in mind.
+{{/if}}
 
 Here is the exercise description:
 {{{exerciseDescription}}}

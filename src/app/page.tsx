@@ -1,12 +1,15 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { SkillNode } from "@/components/SkillNode";
 import { BottomNav } from "@/components/BottomNav";
-import { Rocket, Zap, Crown, ChevronDown, BrainCircuit } from "lucide-react";
+import { Rocket, Zap, Crown, ChevronDown, BrainCircuit, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { COURSES } from "@/app/lib/courses-data";
+import { useUser, useAuth } from "@/firebase/provider";
+import { signOutUser } from "@/firebase/auth";
+import { useRouter } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,9 +17,21 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-
 export default function Home() {
   const [currentCourse, setCurrentCourse] = useState(COURSES[0]);
+  const { user, isUserLoading } = useUser();
+  const auth = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isUserLoading && !user) {
+      router.replace("/login");
+    }
+  }, [user, isUserLoading, router]);
+
+  if (isUserLoading || !user) {
+    return <div className="min-h-screen bg-background flex flex-col items-center justify-center glow-blue text-primary animate-pulse"><Rocket className="w-12 h-12" /></div>;
+  }
 
   return (
     <div className="pb-24 min-h-screen">
@@ -60,6 +75,14 @@ export default function Home() {
             <Crown className="w-4 h-4 text-yellow-500" />
             <span className="text-xs font-bold">1.2k</span>
           </div>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => auth && signOutUser(auth)}
+            className="hover:bg-red-500/10 hover:text-red-500 transition-colors"
+          >
+            <LogOut className="w-5 h-5" />
+          </Button>
         </div>
       </header>
 
